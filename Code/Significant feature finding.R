@@ -68,7 +68,7 @@ for (feat in significant_features$feature) {
 # - From boxplot: The visual difference between these three specific classes is minimal.
 # - MRPP Effect Size: Chance corrected within-group agreement A: 0.0131 
 # - Clinical Rationale
-
+#CN vs MCI and CN vs AD----------
 ## Merge group ------------------------------------------------------------
 cleanMRITotal$Group[cleanMRITotal$Group %in% c("EMCI", "MCI", "LMCI")] <- "MCI"
 cleanMRITotal$Group <- factor(cleanMRITotal$Group)
@@ -241,3 +241,136 @@ print(sig_AD_wilcox$feature)
 print("Features Significant for MCI (Median different from CN Baseline):")
 #print(sig_MCI_wilcox[order(sig_MCI_wilcox$p_value), c("feature", "p_value", "effect_size")])
 print(sig_MCI_wilcox$feature)
+
+#MCI vs AD----------
+# Subset: Only MCI and AD patients
+data_stage <- subset(cleanMRITotal, Group %in% c("MCI", "AD"))
+data_stage$Group <- factor(data_stage$Group, levels = c("MCI", "AD")) 
+
+# 2. REMOVAL OF CONFOUNDING VARIABLES (Sex, Age, Weight)
+# Define columns to remove (ensure names match your dataset)
+vars_to_remove <- c("sex", "age", "Weight") 
+
+# Remove them from the main dataset for this step
+data_stage <- data_stage[, !(names(data_stage) %in% vars_to_remove)]
+
+cat("Removed variables:", paste(vars_to_remove, collapse=", "), "\n")
+cat("Remaining columns (first 5):", head(colnames(data_stage), 5), "\n")
+
+# 3. Numeric matrix preparation for correlations
+# Remove 'Group' column to keep only anatomical features
+num_Stage <- data_stage[, !(names(data_stage) %in% c("Group"))]
+features <- colnames(num_Stage)
+
+
+# ==============================================================================
+# M_eff CALCULATION (Specific for MCI\AD)
+# ==============================================================================
+
+calc_correlation <- function(df){
+  cor_matrix <- cor(df, use = "pairwise.complete.obs") 
+  return(cor_matrix)
+}
+
+calc_meff <- function(cor_matrix){
+  eigenvalues <- eigen(cor_matrix, symmetric = TRUE)$values
+  m_eff <- sum(ifelse(eigenvalues >= 1, 1, eigenvalues))
+  return(m_eff) 
+}
+
+cor_mat_stage <- calc_correlation(num_Stage)
+m_eff_stage <- calc_meff(cor_mat_stage)
+alpha_eff_stage <- 0.05 / round(m_eff_stage)
+
+cat("\n--- Statistical Parameters Step 2 ---\n")
+cat("Number of Anatomical Features:", length(features), "\n")
+cat("M_eff (Independent Tests):", round(m_eff_stage, 2), "\n")
+cat("Corrected Alpha (P-value threshold):", format(alpha_eff_stage, scientific=TRUE), "\n")
+
+
+# ==============================================================================
+# SCENARIO 1: DUNN'S TEST (MCI vs AD)
+# ==============================================================================
+cat("\n--- Execution Scenario 1: Dunn (MCI vs AD) ---\n")
+reference_group <- "MCI"
+results_list <- list()
+
+for (feat in features) {
+  # Dunn's Test
+  dunn_res <- dunn.test(x = data_stage[[feat]], 
+                        g = data_stage$Group, 
+                        method = "none", 
+                        kw = FALSE,
+                        table = FALSE,
+                        altp = FALSE)
+  
+  p_vals_df <- data.frame(comparison = dunn_res$comparisons, p_value = dunn_res$P)
+  group_means <- tapply(data_stage[[feat]], data_stage$Group, mean)
+  
+  for (i in 1:nrow(p_vals_df)) {
+    comp_str <- p_vals_df[i, "comparison"]
+    p_val <- p_vals_df[i, "p_value"]
+    
+    groups <- unlist(strsplit(comp_str, " - "))
+    grp1 <- groups[1]
+    grp2 <- groups[2]
+    
+    if (grp1 == reference_group | grp2 == reference_group) {
+      test_group <- ifelse(grp1 == reference_group, grp2, grp1) # This will be AD
+      effect_size <- group_means[test_group] - group_means[reference_group]
+      
+      results_list <- append(results_list, list(
+        data.frame(feature = feat, group = test_group, p_value = p_val, effect_size = effect_size)
+      ))
+    }
+  }
+}
+
+volcano_df_dunn <- bind_rows(results_list)
+volcano_df_dunn$is_significant <- volcano_df_dunn$p_value < alpha_eff_stage
+
+# Extract Dunn Features
+sig_AD_vs_MCI_Dunn <- subset(volcano_df_dunn, is_significant == TRUE)
+features_Dunn_Step2 <- unique(sig_AD_vs_MCI_Dunn$feature)
+
+cat("Significant Features (DUNN):", length(features_Dunn_Step2), "\n")
+print(features_Dunn_Step2)
+
+
+cat("\n--- Execution Scenario 2: Centered Wilcoxon (Baseline MCI) ---\n")
+
+wilcox_results_list <- list() 
+
+# 1. Center on MCI group means
+mean_vec <- colMeans(data_stage[data_stage$Group == "MCI", features])
+centered_Stage <- data_stage 
+centered_Stage[, features] <- sweep(x = centered_Stage[, features], MARGIN = 2, STATS = mean_vec, FUN = "-")
+
+# 2. Wilcoxon Loop
+for (feat in features) {
+  test_group <- "AD"
+  test_data_centered <- centered_Stage[[feat]][centered_Stage$Group == test_group]
+  test_data_centered <- na.omit(test_data_centered)
+  
+  if (length(test_data_centered) < 10) next 
+  
+  # Test against 0 (which represents the MCI mean)
+  wilcox_res <- wilcox.test(test_data_centered, mu = 0, exact = FALSE) 
+  median_deviation <- median(test_data_centered)
+  
+  wilcox_results_list <- append(wilcox_results_list, list(
+    data.frame(feature = feat, group = test_group, p_value = wilcox_res$p.value, effect_size = median_deviation)
+  ))
+}
+
+volcano_df_wilcox <- bind_rows(wilcox_results_list)
+volcano_df_wilcox$is_significant <- volcano_df_wilcox$p_value < alpha_eff_stage
+
+
+# Extract Wilcoxon Features
+sig_AD_vs_MCI_Wilcox <- subset(volcano_df_wilcox, is_significant == TRUE)
+features_Wilcox_Step2 <- unique(sig_AD_vs_MCI_Wilcox$feature)
+
+cat("Significant Features (WILCOXON):", length(features_Wilcox_Step2), "\n")
+print(features_Wilcox_Step2)
+
