@@ -67,7 +67,7 @@ f_dunn <- as.formula("BinaryGroup ~ Total.Inf.Lat.Vent.Volume_mm3 + ctx.total.mi
 f_wilcox <- as.formula("BinaryGroup ~ s(Total.Lateral.Ventricle.Volume_mm3) + Total.Inf.Lat.Vent.Volume_mm3 + Total.Hippocampus.Volume_mm3 + s(CSF.Volume_mm3) + Total.Accumbens.area.Volume_mm3 + s(ctx.total.caudalanteriorcingulate.Volume_mm3) + s(ctx.total.inferiortemporal.Volume_mm3) + ctx.total.parahippocampal.Volume_mm3 + s(ctx.total.parsopercularis.Volume_mm3) + s(ctx.total.posteriorcingulate.Volume_mm3) + s(ctx.total.rostralanteriorcingulate.Volume_mm3) + Cbm_Vermis_VII.Volume_mm3 + s(Total.Fornix.Volume_mm3) + Subject.Age + s(Weight.Kg)")
 
 # 3. STAGE 2 Formula (MCI vs AD)
-f_stage2 <- as.formula("Group ~ Total.Hippocampus.Volume_mm3 + ctx.total.entorhinal.Volume_mm3 + ctx.total.precuneus.Volume_mm3 + ctx.total.superiorparietal.Volume_mm3 + s(ctx.total.insula.Volume_mm3) + s(Tuberal.Region.Volume_mm3) + ctx.total.fusiform.Volume_mm3")
+f_stage2 <- as.formula("Group ~ Total.Hippocampus.Volume_mm3 + ctx.total.entorhinal.Volume_mm3 + ctx.total.precuneus.Volume_mm3 + ctx.total.superiorparietal.Volume_mm3 + ctx.total.insula.Volume_mm3 + s(Tuberal.Region.Volume_mm3) + ctx.total.fusiform.Volume_mm3")
 
 
 # ==============================================================================
@@ -285,7 +285,7 @@ cat("\n>>> Generating Plots for STAGE 2 (Staging) <<<\n")
 
 
 try(dev.off(), silent=TRUE) # Page reset
-par(mfrow = c(1, 2))        # 2 plots
+par(mfrow = c(1, 1))        # 2 plots
 
 plot(final_model_stage2, 
      scheme = 1, 
